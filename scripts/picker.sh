@@ -25,13 +25,20 @@ done
 
 self="$DIR/picker.sh"
 export FZF_DEFAULT_OPTS=''
+
+# Arbitrary user fzf options (e.g. custom --bind or --preview-window)
+extra_opts=()
+fzf_options="$(get_tmux_option @claude_fzf_options '')"
+[ -n "$fzf_options" ] && eval "extra_opts=($fzf_options)"
+
 # ctrl-x kills the Claude process itself: a dedicated session dies with its last
 # window, while a loose pane keeps the shell that hosted it. The reload waits a
 # beat so the supervisor has dropped the agent from `claude agents --json`.
 sel=$("$DIR/agents.sh" | fzf --ansi --delimiter='\t' --with-nth=5,6,7,8 \
   --reverse --cycle --header='Claude agents · enter: jump · ctrl-x: kill' \
   --preview='tmux capture-pane -ept {2}' --preview-window='up,70%,follow' \
-  --bind="ctrl-x:execute-silent(kill {3})+reload(sleep 0.3; $self --list)")
+  --bind="ctrl-x:execute-silent(kill {3})+reload(sleep 0.3; $self --list)" \
+  ${extra_opts[@]+"${extra_opts[@]}"})
 
 [ -z "$sel" ] && exit 0
 pane=$(printf '%s' "$sel" | cut -f2)
