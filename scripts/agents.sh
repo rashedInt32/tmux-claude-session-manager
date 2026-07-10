@@ -33,18 +33,30 @@ fi
 [ -n "$rows" ] || exit 0
 
 {
-  ps -Ao pid=,tty=,comm= 2>/dev/null | awk '{ print "P\t" $1 "\t" $2 "\t" $3 }'
+  ps -Ao pid=,ppid=,tty=,comm= 2>/dev/null | awk '{ print "P\t" $1 "\t" $2 "\t" $3 "\t" $4 }'
   tmux list-panes -a -F $'T\t#{pane_tty}\t#{pane_id}\t#{session_name}\t#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null
   printf '%s\n' "$rows" | sed $'s/^/A\t/'
 } | awk -F'\t' -v now="$(date +%s)" -v home="$HOME" \
   -v prefix="$(get_tmux_option @claude_session_prefix 'claude-')" '
-  $1 == "P" { tty_of[$2] = $3; comm_of[$2] = $4; next }
+  # Nearest ancestor (starting at pid itself) whose tty is a tmux pane. A Claude
+  # run inside an embedded terminal -- nvim `:terminal`, sidekick.nvim -- sits on
+  # a pty its editor minted, not on the pane tty, so the pane is only reachable
+  # by climbing ppid. Depth-capped; a chain that escapes tmux ends at pid 1.
+  function pane_tty_of(p,   i, t) {
+    for (i = 0; i < 16 && p != "" && p != "0" && p != "1"; i++) {
+      t = tty_of[p]
+      if (t != "" && (t in pane)) return t
+      p = ppid_of[p]
+    }
+    return ""
+  }
+  $1 == "P" { ppid_of[$2] = $3; tty_of[$2] = $4; comm_of[$2] = $5; next }
   $1 == "T" { sub(/^\/dev\//, "", $2); pane[$2] = $3; sess[$2] = $4; loc[$2] = $5; next }
   $1 == "A" {
     pid = $2; status = $3; cwd = $5; upd = $6
 
-    tty = tty_of[pid]
-    if (tty == "" || !(tty in pane)) next          # not running inside tmux
+    tty = pane_tty_of(pid)
+    if (tty == "") next                           # not running inside tmux
 
     # Stale file + recycled PID. Fail open: only drop when we can positively
     # identify the live process as something other than a Claude.
