@@ -11,9 +11,10 @@ end up with a dozen of them and no way to tell which are finished without openin
 each one. This plugin gives you:
 
 - 🔢 **A central picker** (`prefix` + `u`) listing every running Claude agent —
-  several in one project, and any running loose in an ordinary pane.
+  several in one project, any running loose in an ordinary pane, and any running
+  inside an embedded terminal such as nvim's `:terminal` or `sidekick.nvim`.
 - 🟢 **Live status** per agent — `working` / `waiting` / `idle` — read straight
-  from `claude agents --json`, so you instantly see which need you. No setup.
+  from the state each agent publishes, so you instantly see which need you. No setup.
 - 👁️ **A live preview** of each agent's screen right in the picker.
 - 🎯 **Smart jump** — selecting an agent switches your client to the window it
   was launched from, then resumes it in a popup over it.
@@ -28,9 +29,9 @@ the picker reads it — there are no hooks to install.
 
 - **tmux ≥ 3.2** (for `display-popup`)
 - **[fzf](https://github.com/junegunn/fzf)** — the picker UI
-- **[jq](https://jqlang.org/)** — parses `claude agents --json`
+- **[jq](https://jqlang.org/)** — parses the agent state
 - **[Claude Code](https://claude.com/claude-code)** ≥ 2.1.139 — for the
-  `claude agents` command (`claude --version` to check)
+  `claude agents` command, used as a fallback (`claude --version` to check)
 - bash; macOS or Linux
 
 ## Install (tpm)
@@ -142,24 +143,34 @@ so tmux stores a literal `$` (in a single-quoted value, use a bare
 - The **launcher** creates a detached `claude-<hash-of-dir>` tmux session running
   `claude`, records the window it came from in `@claude_origin`, and attaches to
   it in a popup.
-- **`claude agents --json`** is the source of truth for what is running and how it
-  is doing. Each Claude session self-reports its state (`busy` / `waiting` /
-  `idle`) to a supervisor daemon, which that command publishes. Nothing here scans
-  processes for a `claude` command name — on macOS a pane reports its parent shell,
-  never the `claude` child running inside it.
+- **`~/.claude/sessions/<pid>.json`** is the source of truth for what is running
+  and how it is doing. Each Claude session self-reports its state (`busy` /
+  `waiting` / `idle`) to a supervisor daemon, which writes one file per agent.
+  Reading those files is effectively free, whereas `claude agents --json`
+  publishes the same data at the cost of ~200ms of Node startup on every render —
+  so the CLI is kept only as a fallback for when the directory is absent. Nothing
+  here scans processes for a `claude` command name — on macOS a pane reports its
+  parent shell, never the `claude` child running inside it.
 - **`agents.sh`** pairs each running Claude with the tmux pane it occupies by
-  joining `pid` → `tty` → pane. That join is why identity is the Claude _process_
-  rather than the tmux session, and therefore why several agents in one project
-  each get their own row. It costs three subprocesses per render, whatever the
+  climbing `ppid` from the agent until an ancestor's `tty` is a pane's `tty`.
+  That join is why identity is the Claude _process_ rather than the tmux session,
+  and therefore why several agents in one project each get their own row. Walking
+  the chain — rather than matching the agent's own `tty` — is what finds a Claude
+  running inside an embedded terminal, which sits on a pty its editor minted
+  rather than on the pane's. It costs two subprocesses per render, whatever the
   number of sessions or panes.
-- The **age column** is the mtime of the agent's transcript — its last sign of
-  life. `claude agents --json` reports only `startedAt`, never a last-activity
-  time. A brand-new agent that has yet to take a turn shows `-`.
+- The **age column** is `statusUpdatedAt` — when the agent last changed state.
+  A session file left behind by an agent killed with `SIGKILL` could otherwise
+  surface a recycled PID, so rows are dropped when `ps comm=` shows the live
+  process is not a Claude. Note `procStart` cannot be compared against `ps`'s
+  `lstart`: the former is UTC, the latter local time.
 - The **picker** renders those rows with a live `capture-pane` preview. On `enter`
   a **dedicated** agent (in a `claude-*` session) resumes in the popup over the
   window it was launched from, while a **loose** one (any other pane) is focused in
   place. `ctrl-x` kills the Claude process itself: a dedicated session dies with
-  its last window, and a loose pane keeps the shell that hosted it.
+  its last window, and a loose pane keeps the shell that hosted it. An agent inside
+  an embedded terminal jumps to the pane running the editor — tmux cannot focus a
+  buffer within it — and `ctrl-x` kills the agent while leaving the editor running.
 - Pressing `prefix` + `u` **from inside a session popup** detaches that popup
   first (closing it), then reopens the picker full-size on the outer host client —
   so you never end up with a cramped popup-in-popup.
