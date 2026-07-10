@@ -151,19 +151,22 @@ so tmux stores a literal `$` (in a single-quoted value, use a bare
   so the CLI is kept only as a fallback for when the directory is absent. Nothing
   here scans processes for a `claude` command name — on macOS a pane reports its
   parent shell, never the `claude` child running inside it.
-- **`agents.sh`** pairs each running Claude with the tmux pane it occupies by
-  climbing `ppid` from the agent until an ancestor's `tty` is a pane's `tty`.
-  That join is why identity is the Claude _process_ rather than the tmux session,
-  and therefore why several agents in one project each get their own row. Walking
-  the chain — rather than matching the agent's own `tty` — is what finds a Claude
-  running inside an embedded terminal, which sits on a pty its editor minted
-  rather than on the pane's. It costs two subprocesses per render, whatever the
-  number of sessions or panes.
+- **`agents.sh`** pairs each running Claude with its tmux pane by reading
+  `TMUX_PANE` out of the agent's own environment. tmux exports it into every
+  pane and every child inherits it — through the shell, through an editor, into
+  Claude. That is why identity is the Claude _process_ rather than the tmux
+  session, and therefore why several agents in one project each get their own
+  row. It is also why a Claude inside an embedded terminal needs no special
+  handling: it reports the pane of the editor hosting it. Nothing walks the
+  process tree, and nothing keys off `tty` — the OS recycles a tty, whereas
+  tmux never reuses a `%N` pane id within a server. `TMUX` carries the server
+  pid too, so agents belonging to another tmux server are skipped rather than
+  mis-joined onto a same-numbered pane here.
 - The **age column** is `statusUpdatedAt` — when the agent last changed state.
   A session file left behind by an agent killed with `SIGKILL` could otherwise
-  surface a recycled PID, so rows are dropped when `ps comm=` shows the live
-  process is not a Claude. Note `procStart` cannot be compared against `ps`'s
-  `lstart`: the former is UTC, the latter local time.
+  surface a recycled PID, so a row is dropped when the live process's executable
+  is not a Claude. Note `procStart` cannot be compared against `ps`'s `lstart`:
+  the former is UTC, the latter local time.
 - The **picker** renders those rows with a live `capture-pane` preview. On `enter`
   a **dedicated** agent (in a `claude-*` session) resumes in the popup over the
   window it was launched from, while a **loose** one (any other pane) is focused in
@@ -174,6 +177,26 @@ so tmux stores a literal `$` (in a single-quoted value, use a bare
 - Pressing `prefix` + `u` **from inside a session popup** detaches that popup
   first (closing it), then reopens the picker full-size on the outer host client —
   so you never end up with a cramped popup-in-popup.
+
+## Performance
+
+Time to build the picker's rows, which is the delay between pressing
+`prefix` + `u` and seeing the list:
+
+| source of truth                              | time    |
+| -------------------------------------------- | ------- |
+| `claude agents --json` + `ps -A`             | `0.25s` |
+| `~/.claude/sessions/*.json` + `TMUX_PANE`    | `0.02s` |
+
+Almost all of the difference is Node startup: `claude agents --json` spends
+~0.20s booting to answer one query. Scoping `ps` to the agent pids, rather than
+enumerating every process on the system, accounts for most of the rest.
+
+Warm medians over six runs, on macOS with three agents running. A cold
+`claude agents --json` has been seen to take upwards of `0.9s`. `ps` scales with
+the number of processes on the box and `jq` with the number of agents, so your
+numbers will differ. The `capture-pane` preview is not part of this — it renders
+in under a millisecond, and redrawing it as you move the cursor is free.
 
 ## License
 
