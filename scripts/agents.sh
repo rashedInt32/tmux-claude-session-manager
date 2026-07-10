@@ -45,27 +45,35 @@ fi
 
 pids="$(printf '%s\n' "$rows" | cut -f1 | paste -sd, -)"
 
-# E: pid \t pane \t server-pid \t exe   -- one row per agent, from its environment.
+# E: pid \t pane \t server-pid \t cmdline   -- one row per agent, from its environment.
+#
+# cmdline is the whole command, not just argv[0]: an install that runs Claude as
+# `node .../cli.js` must still be recognised, while a bare `node` must not. Under
+# -E the environment is appended to the command column, so the command ends at the
+# first NAME=... token.
 agent_env() {
   if [ -r /proc/self/environ ]; then
-    # Linux: read the environment directly, no ps.
+    # Linux: read the environment directly, no ps. cmdline is NUL-separated and
+    # carries no environment, so it needs no splitting.
     printf '%s\n' "$rows" | cut -f1 | while IFS= read -r p; do
       [ -r "/proc/$p/environ" ] || continue
       tr '\0' '\n' <"/proc/$p/environ" |
-        awk -v p="$p" -v exe="$(tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null | cut -d' ' -f1)" '
+        awk -v p="$p" -v cmd="$(tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null)" '
           /^TMUX_PANE=/ { pane = substr($0, 11) }
           /^TMUX=/      { split(substr($0, 6), t, ","); srv = t[2] }
-          END           { if (pane != "") print "E\t" p "\t" pane "\t" srv "\t" exe }'
+          END           { if (pane != "") print "E\t" p "\t" pane "\t" srv "\t" cmd }'
     done
   else
     # BSD/macOS: -E appends the environment to the command column.
     ps -Eww -o pid=,command= -p "$pids" 2>/dev/null | awk '{
-      pid = $1; exe = $2; pane = ""; srv = ""
-      for (i = 3; i <= NF; i++) {
-        if      ($i ~ /^TMUX_PANE=/) pane = substr($i, 11)
-        else if ($i ~ /^TMUX=/)      { split(substr($i, 6), t, ","); srv = t[2] }
+      pid = $1; pane = ""; srv = ""; cmd = ""; in_env = 0
+      for (i = 2; i <= NF; i++) {
+        if (!in_env && $i ~ /^[A-Z_][A-Z0-9_]*=/) in_env = 1
+        if (!in_env)                      { cmd = cmd " " $i }
+        else if ($i ~ /^TMUX_PANE=/)      { pane = substr($i, 11) }
+        else if ($i ~ /^TMUX=/)           { split(substr($i, 6), t, ","); srv = t[2] }
       }
-      if (pane != "") print "E\t" pid "\t" pane "\t" srv "\t" exe
+      if (pane != "") print "E\t" pid "\t" pane "\t" srv "\t" cmd
     }'
   fi
 }
@@ -77,7 +85,7 @@ agent_env() {
 } | awk -F'\t' -v now="$(date +%s)" -v home="$HOME" \
   -v server="$(tmux display-message -p '#{pid}' 2>/dev/null)" \
   -v prefix="$(get_tmux_option @claude_session_prefix 'claude-')" '
-  $1 == "E" { pane_of[$2] = $3; srv_of[$2] = $4; exe_of[$2] = $5; next }
+  $1 == "E" { pane_of[$2] = $3; srv_of[$2] = $4; cmd_of[$2] = $5; next }
   $1 == "T" { sess[$2] = $3; loc[$2] = $4; next }
   $1 == "A" {
     pid = $2; status = $3; cwd = $4; upd = $5
@@ -86,10 +94,11 @@ agent_env() {
     if (p == "" || !(p in sess)) next             # not in a pane of this server
     if (server != "" && srv_of[pid] != "" && srv_of[pid] != server) next
 
-    # Stale file + recycled PID. Fail open: only drop when we can positively
-    # identify the live process as something other than a Claude.
-    e = exe_of[pid]
-    if (e != "" && e !~ /claude|node/) next
+    # Stale file + recycled PID: the file outlives an agent killed with SIGKILL,
+    # and ctrl-x would SIGTERM whatever inherited the number. Require the live
+    # process to actually be a Claude. Matching the whole command line, not
+    # argv[0], keeps `node .../cli.js` working without waving through a bare node.
+    if (cmd_of[pid] !~ /claude/) next
 
     if      (status == "waiting") { icon = "\033[33m●\033[0m waiting"; rank = 0 }
     else if (status == "idle")    { icon = "\033[32m●\033[0m idle   "; rank = 1 }

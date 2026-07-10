@@ -164,9 +164,14 @@ so tmux stores a literal `$` (in a single-quoted value, use a bare
   mis-joined onto a same-numbered pane here.
 - The **age column** is `statusUpdatedAt` — when the agent last changed state.
   A session file left behind by an agent killed with `SIGKILL` could otherwise
-  surface a recycled PID, so a row is dropped when the live process's executable
-  is not a Claude. Note `procStart` cannot be compared against `ps`'s `lstart`:
-  the former is UTC, the latter local time.
+  surface a recycled PID — and `ctrl-x` would then signal whatever inherited the
+  number — so a row is dropped unless the live process's **command line** names a
+  Claude. Matching the whole command rather than `argv[0]` keeps an install that
+  runs `node .../cli.js` working without waving through a bare `node`. Note
+  `procStart` cannot be compared against `ps`'s `lstart`: the former is UTC, the
+  latter local time. Note also that macOS will not reveal the environment of
+  SIP-protected system binaries, so such a process is dropped a step earlier,
+  at the pane lookup.
 - The **picker** renders those rows with a live `capture-pane` preview. On `enter`
   a **dedicated** agent (in a `claude-*` session) resumes in the popup over the
   window it was launched from, while a **loose** one (any other pane) is focused in
