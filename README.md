@@ -28,9 +28,9 @@
 > - 🛡️ **Recycled-PID guard** — a stale session file can't surface (or `ctrl-x`
 >   kill) an unrelated process; the live command line must be a Claude.
 >
-> Embedded-agent approve/reject and conversation preview need a small nvim-side
-> helper (`M.permit` / `M.preview`) — see
-> [`claude_sessions.lua`](https://github.com/rashedInt32/lazyvim-config/blob/main/lua/config/claude_sessions.lua).
+> Embedded-agent approve/reject and conversation preview need the companion
+> nvim plugin — [claude-sessions.nvim](https://github.com/rashedInt32/claude-sessions.nvim),
+> which also puts every agent's status in your statusline.
 > Everything else works with tmux + fzf + jq alone.
 
 [![screenshot](./docs/screenshot.jpg)](https://youtu.be/NnTV6r4l5D0)
