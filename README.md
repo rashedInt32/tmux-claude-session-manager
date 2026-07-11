@@ -1,5 +1,38 @@
 # tmux-claude-session-manager
 
+> ## 🍴 About this fork
+>
+> Fork of [craftzdog/tmux-claude-session-manager](https://github.com/craftzdog/tmux-claude-session-manager)
+> that turns the picker from a *jump-to-session list* into a **remote control for
+> every Claude agent on the machine** — including agents embedded in nvim. What it
+> adds over the original:
+>
+> - ⚡ **~10× faster picker** — agent state is read from `~/.claude/sessions/*.json`
+>   and each agent's own environment instead of shelling out to `claude agents --json`:
+>
+>   | source of truth                           | picker opens in |
+>   | ----------------------------------------- | --------------- |
+>   | `claude agents --json` + `ps -A` (upstream) | `0.25s`       |
+>   | session files + `TMUX_PANE` (this fork)     | `0.02s`       |
+>
+> - ✅ **Answer permission prompts from the picker** — `ctrl-y` approve / `ctrl-r`
+>   reject the highlighted agent **without ever leaving your pane**, then watch it
+>   proceed in the preview.
+> - 🖥️ **nvim-embedded agents are first-class** — a Claude inside `:terminal` /
+>   [sidekick.nvim](https://github.com/folke/sidekick.nvim) is found, previewed
+>   (the actual conversation, pulled over the editor's RPC socket — not a
+>   screenshot of the editor), approved and rejected like any other agent.
+> - 📺 **Live preview** — auto-refreshes every second while the picker is open
+>   (`fzf --listen`), so a working agent's output streams in; `ctrl-l` re-polls
+>   manually.
+> - 🛡️ **Recycled-PID guard** — a stale session file can't surface (or `ctrl-x`
+>   kill) an unrelated process; the live command line must be a Claude.
+>
+> Embedded-agent approve/reject and conversation preview need a small nvim-side
+> helper (`M.permit` / `M.preview`) — see
+> [`claude_sessions.lua`](https://github.com/rashedInt32/lazyvim-config/blob/main/lua/config/claude_sessions.lua).
+> Everything else works with tmux + fzf + jq alone.
+
 [![screenshot](./docs/screenshot.jpg)](https://youtu.be/NnTV6r4l5D0)
 
 Run many [Claude Code](https://claude.com/claude-code) sessions across your
@@ -32,6 +65,8 @@ the picker reads it — there are no hooks to install.
 - **[jq](https://jqlang.org/)** — parses the agent state
 - **[Claude Code](https://claude.com/claude-code)** ≥ 2.1.139 — for the
   `claude agents` command, used as a fallback (`claude --version` to check)
+- **curl** — optional; drives the preview auto-refresh (without it, `ctrl-l`
+  re-polls manually)
 - bash; macOS or Linux
 
 ## Install (tpm)
@@ -39,8 +74,11 @@ the picker reads it — there are no hooks to install.
 Add to `~/.tmux.conf` (or `~/.config/tmux/tmux.conf`):
 
 ```tmux
-set -g @plugin 'craftzdog/tmux-claude-session-manager'
+set -g @plugin 'rashedInt32/tmux-claude-session-manager'
 ```
+
+(Use `craftzdog/tmux-claude-session-manager` for the original without the fork
+additions above.)
 
 Then hit `prefix` + <kbd>I</kbd> to install.
 
@@ -52,7 +90,7 @@ Then hit `prefix` + <kbd>I</kbd> to install.
 ### Manual install
 
 ```sh
-git clone https://github.com/craftzdog/tmux-claude-session-manager ~/clone/path
+git clone https://github.com/rashedInt32/tmux-claude-session-manager ~/clone/path
 ```
 
 Add to `~/.tmux.conf`, then reload (`prefix` + <kbd>r</kbd> or `tmux source ~/.tmux.conf`):
@@ -70,11 +108,20 @@ run-shell ~/clone/path/claude_session_manager.tmux
 
 Inside the picker:
 
-| Key                       | Action                                                |
-| ------------------------- | ----------------------------------------------------- |
-| `enter`                   | Jump to the agent (see [How it works](#how-it-works)) |
-| `ctrl-x`                  | Kill the highlighted agent                            |
-| `↑` / `↓`, type to filter | fzf navigation                                        |
+| Key                       | Action                                                        |
+| ------------------------- | ------------------------------------------------------------- |
+| `enter`                   | Jump to the agent (see [How it works](#how-it-works))         |
+| `ctrl-y`                  | **Approve** the agent's permission prompt, without jumping    |
+| `ctrl-r`                  | **Reject** the agent's permission prompt, without jumping     |
+| `ctrl-l`                  | Re-poll the preview (it also auto-refreshes once a second)    |
+| `ctrl-x`                  | Kill the highlighted agent                                    |
+| `↑` / `↓`, type to filter | fzf navigation                                                |
+
+`ctrl-y` / `ctrl-r` only fire while the agent is actually `waiting` — a stray
+key can never land as literal text in a busy or idle agent. For an agent in a
+bare pane the key is typed straight into it (`send-keys`); for one embedded in
+nvim it is routed through the editor's RPC socket into the exact terminal
+hosting that agent.
 
 Agents needing your attention (`waiting`, `idle`) sort to the top.
 
@@ -183,25 +230,17 @@ so tmux stores a literal `$` (in a single-quoted value, use a bare
   first (closing it), then reopens the picker full-size on the outer host client —
   so you never end up with a cramped popup-in-popup.
 
-## Performance
+## Performance notes
 
-Time to build the picker's rows, which is the delay between pressing
-`prefix` + `u` and seeing the list:
-
-| source of truth                              | time    |
-| -------------------------------------------- | ------- |
-| `claude agents --json` + `ps -A`             | `0.25s` |
-| `~/.claude/sessions/*.json` + `TMUX_PANE`    | `0.02s` |
-
-Almost all of the difference is Node startup: `claude agents --json` spends
-~0.20s booting to answer one query. Scoping `ps` to the agent pids, rather than
-enumerating every process on the system, accounts for most of the rest.
-
-Warm medians over six runs, on macOS with three agents running. A cold
-`claude agents --json` has been seen to take upwards of `0.9s`. `ps` scales with
-the number of processes on the box and `jq` with the number of agents, so your
-numbers will differ. The `capture-pane` preview is not part of this — it renders
-in under a millisecond, and redrawing it as you move the cursor is free.
+The timings in [About this fork](#-about-this-fork) are the delay between
+pressing `prefix` + `u` and seeing the list — warm medians over six runs, on
+macOS with three agents running. Almost all of the difference is Node startup:
+`claude agents --json` spends ~0.20s booting to answer one query (a cold run
+has been seen upwards of `0.9s`). Scoping `ps` to the agent pids, rather than
+enumerating every process on the system, accounts for most of the rest. `ps`
+scales with the number of processes on the box and `jq` with the number of
+agents, so your numbers will differ. The `capture-pane` preview is not part of
+this — it renders in under a millisecond.
 
 ## License
 
