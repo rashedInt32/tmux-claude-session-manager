@@ -170,7 +170,9 @@ set -g @claude_fzf_options "\
   --bind 'esc:rebind(j,k,q,i,a,x)+change-prompt(nav> )'"
 ```
 
-The picker opens in **nav** mode:
+Without this option the picker is stock fzf: it opens in filter mode and every
+key you type narrows the list. With it, the picker opens in **nav** mode
+instead:
 
 | Key       | Action                                                  |
 | --------- | ------------------------------------------------------- |
