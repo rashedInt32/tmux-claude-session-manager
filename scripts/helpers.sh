@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 # Shared helpers for tmux-claude-session-manager.
 
+# agent_nvim_sock <pid>
+# Echo the nvim server socket an agent is embedded in, or nothing if it runs
+# directly in a pane. sidekick.nvim exports NVIM=<servername> into the CLI's
+# environment, so an agent living in a nvim `:terminal` carries the socket of its
+# host editor. Both permit.sh and preview.sh route through it. The socket path has
+# no spaces, so slicing a single whitespace-delimited field is safe; the leading
+# boundary in the pattern avoids matching a NVIM-suffixed variable name.
+agent_nvim_sock() {
+  local s
+  s="$(ps -Eww -o command= -p "$1" 2>/dev/null | grep -oE '(^| )NVIM=[^ ]+' | head -1)"
+  s="${s# }"
+  printf '%s' "${s#NVIM=}"
+}
+
 # get_tmux_option <option-name> <default>
 # Echoes the global tmux option value, or the default when unset/empty.
 get_tmux_option() {
