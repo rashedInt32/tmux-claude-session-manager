@@ -39,9 +39,11 @@ nvim_sock="$(agent_nvim_sock "$pid")"
 
 if [ -n "$nvim_sock" ] && [ -S "$nvim_sock" ]; then
   # Hand the key to that nvim; permit() chansends it into the sidekick terminal
-  # whose job hosts this agent. No window ever has to gain focus.
+  # whose job hosts this agent. No window ever has to gain focus. The function
+  # lives in claude-sessions.nvim; the config.claude_sessions fallback keeps a
+  # pre-plugin dotfiles setup working.
   nvim --server "$nvim_sock" --remote-expr \
-    "luaeval('require(\"config.claude_sessions\").permit(_A[1], _A[2])', ['$action', $pid])" \
+    "luaeval('(function() local ok, m = pcall(require, \"claude-sessions\") if not ok then m = require(\"config.claude_sessions\") end return m.permit(_A[1], _A[2]) end)()', ['$action', $pid])" \
     >/dev/null 2>&1 ||
     tmux display-message "claude: could not reach nvim for agent $pid"
 else

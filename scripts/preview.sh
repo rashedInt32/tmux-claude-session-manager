@@ -21,8 +21,10 @@ pane="${2:?missing pane}"
 nvim_sock="$(agent_nvim_sock "$pid")"
 
 if [ -n "$nvim_sock" ] && [ -S "$nvim_sock" ]; then
+  # preview() lives in claude-sessions.nvim; the config.claude_sessions fallback
+  # keeps a pre-plugin dotfiles setup working.
   nvim --server "$nvim_sock" --remote-expr \
-    "luaeval('require(\"config.claude_sessions\").preview(_A)', $pid)" 2>/dev/null ||
+    "luaeval('(function() local ok, m = pcall(require, \"claude-sessions\") if not ok then m = require(\"config.claude_sessions\") end return m.preview(_A) end)()', $pid)" 2>/dev/null ||
     tmux capture-pane -ept "$pane" # fall back to the pane if the RPC call fails
 else
   tmux capture-pane -ept "$pane"
