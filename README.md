@@ -38,36 +38,36 @@
 [![screenshot](./docs/screenshot.jpg)](https://youtu.be/NnTV6r4l5D0)
 
 Run many [Claude Code](https://claude.com/claude-code) sessions across your
-projects, each in its own tmux session. Then **list them, see which are done
-and which are still working, and jump to one**, all from a single popup.
+projects, each in its own tmux session — then **list them, see which are done
+vs. still working, and jump to one** from a single popup.
 
-If you launch Claude per directory (one nested session per project), you
-quickly end up with a dozen of them and no way to tell which are finished
-without opening each one. This plugin gives you:
+If you launch Claude per-directory (one nested session per project), you quickly
+end up with a dozen of them and no way to tell which are finished without opening
+each one. This plugin gives you:
 
-- 🔢 **A central picker** (`prefix` + `u`) that lists every running Claude
-  agent: several in one project, one running loose in an ordinary pane, or one
+- 🔢 **A central picker** (`prefix` + `u`) listing every running Claude agent —
+  several in one project, any running loose in an ordinary pane, and any running
   inside an embedded terminal such as nvim's `:terminal` or `sidekick.nvim`.
-- 🟢 **Live status** per agent (`working` / `waiting` / `idle`), read straight
-  from the state each agent publishes. You instantly see which ones need you.
+- 🟢 **Live status** per agent — `working` / `waiting` / `idle` — read straight
+  from the state each agent publishes, so you instantly see which need you. No setup.
 - 👁️ **A live preview** of each agent's screen right in the picker.
-- 🎯 **Smart jump.** Selecting an agent switches to the window it was launched
-  from, then resumes it in a popup over it.
-- 🚀 **A launcher** (`prefix` + `y`) that opens or re-attaches a Claude session
-  for the current directory.
-- ❌ **Quick kill** (`ctrl-x`) for a finished agent, right from the picker.
+- 🎯 **Smart jump** — selecting an agent switches your client to the window it
+  was launched from, then resumes it in a popup over it.
+- 🚀 **A launcher** (`prefix` + `y`) that opens/attaches a Claude session for the
+  current directory.
+- ❌ **Quick kill** (`ctrl-x`) of a finished agent from the picker.
 
-Status needs no configuration. Claude Code publishes each agent's state and the
-picker reads it. There are no hooks to install.
+Status needs no configuration. Claude Code publishes each agent's own state and
+the picker reads it — there are no hooks to install.
 
 ## Prerequisites
 
 - **tmux ≥ 3.2** (for `display-popup`)
-- **[fzf](https://github.com/junegunn/fzf)**: the picker UI
-- **[jq](https://jqlang.org/)**: parses the agent state
-- **[Claude Code](https://claude.com/claude-code)** ≥ 2.1.139: for the
+- **[fzf](https://github.com/junegunn/fzf)** — the picker UI
+- **[jq](https://jqlang.org/)** — parses the agent state
+- **[Claude Code](https://claude.com/claude-code)** ≥ 2.1.139 — for the
   `claude agents` command, used as a fallback (`claude --version` to check)
-- **curl**: optional, drives the preview auto-refresh (without it, `ctrl-l`
+- **curl** — optional; drives the preview auto-refresh (without it, `ctrl-l`
   re-polls manually)
 - bash; macOS or Linux
 
@@ -175,16 +175,16 @@ The picker opens in **nav** mode:
 | Key       | Action                                                  |
 | --------- | ------------------------------------------------------- |
 | `j` / `k` | move down / up                                          |
-| `i` / `a` | switch to **filter** mode (type to fuzzy-match)         |
+| `i` / `a` | switch to **filter** mode — type to fuzzy-match         |
 | `x`       | kill the highlighted agent (like the built-in `ctrl-x`) |
 | `q`       | close the picker                                        |
 | `enter`   | jump to the agent (both modes)                          |
 | `esc`     | filter mode → back to nav                               |
 
 Only the bound keys are special in nav mode; any other key still filters as you
-type. `x` reloads the list through `$CLAUDE_PICKER`, a path the picker exports
-for exactly this. Write it as `\$CLAUDE_PICKER` inside the double-quoted value
-above so tmux stores a literal `$` (in a single-quoted value, use a bare
+type. `x` reloads the list through `$CLAUDE_PICKER`, a path the picker exports for
+exactly this — write it as `\$CLAUDE_PICKER` inside the double-quoted value above
+so tmux stores a literal `$` (in a single-quoted value, use a bare
 `$CLAUDE_PICKER`).
 
 ## How it works
