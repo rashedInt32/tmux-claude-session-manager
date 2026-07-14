@@ -80,13 +80,12 @@ agent_env() {
 
 {
   agent_env
-  tmux list-panes -a -F $'T\t#{pane_id}\t#{session_name}\t#{session_name}:#{window_index}.#{pane_index}' 2>/dev/null
+  tmux list-panes -a -F $'T\t#{pane_id}\t#{session_name}\t#{session_name}:#{window_index}.#{pane_index}\t#{@claude_popup}' 2>/dev/null
   printf '%s\n' "$rows" | sed $'s/^/A\t/'
 } | awk -F'\t' -v now="$(date +%s)" -v home="$HOME" \
-  -v server="$(tmux display-message -p '#{pid}' 2>/dev/null)" \
-  -v prefix="$(get_tmux_option @claude_session_prefix 'claude-')" '
+  -v server="$(tmux display-message -p '#{pid}' 2>/dev/null)" '
   $1 == "E" { pane_of[$2] = $3; srv_of[$2] = $4; cmd_of[$2] = $5; next }
-  $1 == "T" { sess[$2] = $3; loc[$2] = $4; next }
+  $1 == "T" { sess[$2] = $3; loc[$2] = $4; popup[$2] = $5; next }
   $1 == "A" {
     pid = $2; status = $3; cwd = $4; upd = $5
 
@@ -102,11 +101,14 @@ agent_env() {
 
     if      (status == "waiting") { icon = "\033[33m●\033[0m waiting"; rank = 0 }
     else if (status == "idle")    { icon = "\033[32m●\033[0m idle   "; rank = 1 }
+    else if (status == "shell")   { icon = "\033[36m●\033[0m shell  "; rank = 1 }
     else if (status == "busy")    { icon = "\033[31m●\033[0m working"; rank = 3 }
     else                          { icon = "\033[90m●\033[0m   ?    "; rank = 2 }
 
     age = (upd > 0) ? int((now - upd / 1000) / 60) "m" : "-"
-    kind = (index(sess[p], prefix) == 1) ? "dedicated" : "loose"
+    # Dedicated = lives in a session launch.sh created (marked @claude_popup).
+    # The name prefix is not checked: a user session named claude-* is loose.
+    kind = (popup[p] == "1") ? "dedicated" : "loose"
 
     path = cwd
     if (index(path, home) == 1) path = "~" substr(path, length(home) + 1)
