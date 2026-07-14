@@ -5,7 +5,6 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=helpers.sh
 . "$DIR/helpers.sh"
 
-prefix="$(get_tmux_option @claude_session_prefix 'claude-')"
 w="$(get_tmux_option @claude_popup_width '90%')"
 h="$(get_tmux_option @claude_popup_height '90%')"
 
@@ -18,8 +17,12 @@ me="${1:-}"
 my_session="$(tmux list-clients -F '#{client_name} #{session_name}' 2>/dev/null |
   awk -v me="$me" '$1 == me { print $2; exit }')"
 
-case "$my_session" in
-"$prefix"*)
+# Popup sessions are recognised by the @claude_popup marker launch.sh sets at
+# creation, NOT by the session-name prefix: a user session whose name merely
+# starts with the prefix (e.g. project dir claude-foo) must not be detached —
+# that would close the user's terminal, not a popup.
+if [ -n "$my_session" ] &&
+  [ "$(tmux show-options -qv -t "$my_session:" @claude_popup 2>/dev/null)" = 1 ]; then
   # We are inside a session popup: close it, then reopen the picker on the
   # outer client that originally opened it.
   tmux detach-client -s "$my_session"
@@ -28,13 +31,11 @@ case "$my_session" in
     sleep 0.05
   done
   host="$(tmux show-options -gqv @claude_parent 2>/dev/null)"
-  ;;
-*)
+else
   # Normal case: this client is already the host.
   host="$me"
   tmux set-option -g @claude_parent "$host"
-  ;;
-esac
+fi
 
 # Host the picker on the outer client. -c is honored because that client has no
 # popup open now; fall back to the default client if none was found.

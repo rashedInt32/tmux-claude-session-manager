@@ -6,8 +6,9 @@
 #
 # Rows come from agents.sh, which pairs each running Claude with the tmux pane it
 # occupies. Two kinds of row jump differently:
-#   dedicated  a Claude in a `claude-*` session this plugin launched — resumed in
-#              the popup, over the window it was launched from.
+#   dedicated  a Claude in a session this plugin launched (marked with
+#              @claude_popup) — resumed in the popup, over the window it was
+#              launched from.
 #   loose      a Claude running in any other pane — focused in place.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
